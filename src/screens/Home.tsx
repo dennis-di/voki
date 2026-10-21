@@ -4,7 +4,7 @@ import { loadSubject, saveUnit } from '../lib/data';
 import { SAMPLE_FR } from '../lib/sample';
 import { setSettings, useSettings } from '../lib/settings';
 import { SUBJECTS, type Profile, type Stat, type Subject, type Unit, type Vocab } from '../lib/types';
-import { Logo, toast } from '../ui/common';
+import { Logo, SettingsButton, toast } from '../ui/common';
 import { ICamera } from '../ui/icons';
 
 export function SubjectSwitch({ value, onChange }: { value: Subject; onChange: (s: Subject) => void }) {
@@ -48,7 +48,7 @@ export default function Home({ profile, go }: { profile: Profile; go: Go }) {
   return (
     <main className="app">
       <header className="stack" style={{ gap: 22, paddingTop: 6 }}>
-        <Logo height={30} />
+        <div className="row"><span className="grow"><Logo height={30} /></span><SettingsButton onClick={() => go({ n: 'settings' })} /></div>
         <h1>Hallo <span className="gradtext">{profile.display_name || profile.username}</span></h1>
       </header>
       <SubjectSwitch value={s.subject} onChange={(subject) => setSettings({ subject })} />

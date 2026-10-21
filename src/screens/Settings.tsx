@@ -5,7 +5,7 @@ import { hasSpeech, pickVoice, speakOnce, useVoices, voicesFor } from '../lib/sp
 import { supabase } from '../lib/supabase';
 import type { Profile } from '../lib/types';
 import { toast } from '../ui/common';
-import { IShield } from '../ui/icons';
+import { IBack, IShield } from '../ui/icons';
 import type { Go } from '../App';
 
 const SAMPLES = { fr: "Bonjour, je m'appelle Thomas.", en: 'Hello, my name is Daniel.', de: 'Hallo, wie geht es dir?' } as const;
@@ -40,7 +40,10 @@ export default function Settings({ profile, onProfile, go }: { profile: Profile;
 
   return (
     <main className="app">
-      <header className="stack" style={{ gap: 4 }}><span className="eyebrow">Einstellungen</span><h1>Dein <span className="gradtext">Setup</span></h1></header>
+      <header className="subhead">
+        <button className="ib" onClick={() => go({ n: 'home' })} aria-label="Zurück"><IBack /></button>
+        <div className="grow"><span className="eyebrow">Einstellungen</span><h1>Dein <span className="gradtext">Setup</span></h1></div>
+      </header>
 
       {profile.role === 'admin' && (
         <button className="glass pad row" style={{ textAlign: 'left', color: 'inherit', width: '100%' }} onClick={() => go({ n: 'admin' })}>

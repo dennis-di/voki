@@ -6,6 +6,7 @@ import { speakOnce, stopOnce, unlockAudio } from '../lib/speech';
 import { grade, shuffle, type Grade } from '../lib/text';
 import { SUBJECTS, type Stat, type Subject, type Unit, type Vocab } from '../lib/types';
 import { ISpeaker } from '../ui/icons';
+import { SettingsButton } from '../ui/common';
 import { SubjectSwitch } from './Home';
 
 type Mode = 'mc' | 'write' | 'listen';
@@ -79,7 +80,10 @@ export default function Test({ go }: { go: Go }) {
 
   return (
     <main className="app">
-      <header className="stack" style={{ gap: 4 }}><span className="eyebrow">Vokabeltest</span><h1>Was <span className="gradtext">sitzt</span> schon?</h1></header>
+      <header className="row" style={{ alignItems: 'flex-start' }}>
+        <div className="stack grow" style={{ gap: 4 }}><span className="eyebrow">Vokabeltest</span><h1>Was <span className="gradtext">sitzt</span> schon?</h1></div>
+        <SettingsButton onClick={() => go({ n: 'settings' })} />
+      </header>
       <SubjectSwitch value={subject} onChange={(x) => setSettings({ subject: x })} />
       {!data && <div className="glass pad muted">Lädt …</div>}
       {data && units.length === 0 && (

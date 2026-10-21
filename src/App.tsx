@@ -4,7 +4,7 @@ import { supabase } from './lib/supabase';
 import { myProfile } from './lib/data';
 import type { Profile } from './lib/types';
 import { Background, Toaster } from './ui/common';
-import { IBook, ICheck, IGear, IPlus } from './ui/icons';
+import { IBook, ICheck, IPlus } from './ui/icons';
 import { stopPlayer } from './lib/speech';
 import Auth from './screens/Auth';
 import Home from './screens/Home';
@@ -38,11 +38,10 @@ export default function App() {
 
   const tabs: { n: Route['n']; label: string; icon: JSX.Element }[] = [
     { n: 'home', label: 'Lernen', icon: <IBook /> },
-    { n: 'test', label: 'Test', icon: <ICheck /> },
     { n: 'edit', label: 'Neu', icon: <IPlus /> },
-    { n: 'settings', label: 'Einstellungen', icon: <IGear /> },
+    { n: 'test', label: 'Test', icon: <ICheck /> },
   ];
-  const showTabs = route.n !== 'unit' && !(route.n === 'edit' && route.id);
+  const showTabs = route.n !== 'unit' && route.n !== 'settings' && route.n !== 'admin' && !(route.n === 'edit' && route.id);
 
   return (
     <>
@@ -57,7 +56,7 @@ export default function App() {
         <nav className="dock" aria-label="Hauptmenü">
           <div className="tabbar glass" style={{ ['--n' as string]: tabs.length }}>
             {tabs.map((t) => (
-              <button key={t.n} className={'tab' + (t.n === 'edit' ? ' plus' : '')} aria-current={route.n === t.n || (t.n === 'settings' && route.n === 'admin') ? 'page' : undefined} onClick={() => go({ n: t.n } as Route)}>
+              <button key={t.n} className={'tab' + (t.n === 'edit' ? ' plus' : '')} aria-current={route.n === t.n ? 'page' : undefined} onClick={() => go({ n: t.n } as Route)}>
                 {t.n === 'edit' ? <span className="fab">{t.icon}</span> : t.icon}
                 <span>{t.label}</span>
               </button>
