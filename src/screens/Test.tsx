@@ -5,13 +5,23 @@ import { setSettings, useSettings } from '../lib/settings';
 import { speakOnce, stopOnce, unlockAudio } from '../lib/speech';
 import { grade, shuffle, type Grade } from '../lib/text';
 import { SUBJECTS, type Stat, type Subject, type Unit, type Vocab } from '../lib/types';
-import { ISpeaker } from '../ui/icons';
+import { IBack, ISpeaker } from '../ui/icons';
 import { SettingsButton } from '../ui/common';
 import { SubjectSwitch } from './Home';
 
 type Mode = 'mc' | 'write' | 'listen';
 type Dir = 'to-de' | 'from-de';
 interface Wrong { v: Vocab; you: string }
+interface Run { mode: Mode; dir: Dir; list: Vocab[]; i: number; score: number; wrong: Wrong[] }
+
+/** Laufender Test je Fach – bleibt beim Wechsel ins Menü und beim Neuladen erhalten */
+const RUN_KEY = 'vw:test-run';
+let saved: Partial<Record<Subject, Run>> = {};
+try { saved = JSON.parse(localStorage.getItem(RUN_KEY) || '{}'); } catch { /* privat */ }
+function saveRun(subject: Subject, run: Run | null) {
+  if (run) saved[subject] = run; else delete saved[subject];
+  try { localStorage.setItem(RUN_KEY, JSON.stringify(saved)); } catch { /* privat */ }
+}
 
 const ACCENTS: Record<Subject | 'de', string[]> = {
   fr: ['é', 'è', 'ê', 'à', 'â', 'ç', 'î', 'ï', 'ô', 'û', 'ù', 'ë', 'œ', "'"],
@@ -19,7 +29,7 @@ const ACCENTS: Record<Subject | 'de', string[]> = {
   de: ['ä', 'ö', 'ü', 'ß'],
 };
 
-export default function Test({ go }: { go: Go }) {
+export default function Test({ go, onActive }: { go: Go; onActive: (active: boolean) => void }) {
   const s = useSettings();
   const subject = s.subject;
   const [data, setData] = useState<{ units: Unit[]; vocab: Vocab[]; stats: Stat[] } | null>(null);
@@ -27,11 +37,14 @@ export default function Test({ go }: { go: Go }) {
   const [mode, setMode] = useState<Mode>('mc');
   const [dir, setDir] = useState<Dir>('to-de');
   const [onlyWrong, setOnlyWrong] = useState(false);
-  const [run, setRun] = useState<{ list: Vocab[]; i: number; score: number; wrong: Wrong[] } | null>(null);
+  const [run, setRunState] = useState<Run | null>(() => saved[subject] || null);
+  const [playing, setPlaying] = useState(false);
   const [done, setDone] = useState(false);
+  const setRun = (r: Run | null) => { setRunState(r); saveRun(subject, r); };
 
-  useEffect(() => { setData(null); setSel(null); setRun(null); setDone(false); loadSubject(subject).then(setData).catch(() => setData({ units: [], vocab: [], stats: [] })); }, [subject]);
-  useEffect(() => () => stopOnce(), []);
+  useEffect(() => { setData(null); setSel(null); setRunState(saved[subject] || null); setPlaying(false); setDone(false); loadSubject(subject).then(setData).catch(() => setData({ units: [], vocab: [], stats: [] })); }, [subject]);
+  useEffect(() => () => { stopOnce(); onActive(false); }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { onActive(!!run && playing && !done); }, [run, playing, done]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const units = data?.units || [];
   const chosen = sel ?? new Set(units.map((u) => u.id));
@@ -45,15 +58,25 @@ export default function Test({ go }: { go: Go }) {
     setSel(n.size ? n : new Set(units.map((u) => u.id)));
   };
 
-  function start(list: Vocab[]) { unlockAudio(); setRun({ list: shuffle(list), i: 0, score: 0, wrong: [] }); setDone(false); }
+  function start(list: Vocab[], m: Mode = mode, d: Dir = dir) { unlockAudio(); setRun({ mode: m, dir: d, list: shuffle(list), i: 0, score: 0, wrong: [] }); setDone(false); setPlaying(true); window.scrollTo({ top: 0 }); }
+  function resume() { unlockAudio(); setPlaying(true); window.scrollTo({ top: 0 }); }
+  function next(r: Run) {
+    if (r.i < r.list.length - 1) { setRun({ ...r, i: r.i + 1 }); return true; }
+    setDone(true); saveRun(subject, null); return false;
+  }
 
-  if (run && !done) return <Question key={run.i} subject={subject} mode={mode} dir={dir} run={run} all={data?.vocab || []}
+  if (run && playing && !done) return <Question key={run.i} subject={subject} mode={run.mode} dir={run.dir} run={run} all={data?.vocab || run.list}
     onAnswer={(ok, you) => {
       recordAnswer(run.list[run.i].id, ok).catch(() => { /* offline: nicht schlimm */ });
       setRun({ ...run, score: run.score + (ok ? 1 : 0), wrong: ok ? run.wrong : [...run.wrong, { v: run.list[run.i], you }] });
     }}
-    onNext={() => { stopOnce(); if (run.i < run.list.length - 1) setRun({ ...run, i: run.i + 1 }); else setDone(true); }}
-    onQuit={() => { stopOnce(); setRun(null); }} />;
+    onNext={() => { stopOnce(); next(run); window.scrollTo({ top: 0 }); }}
+    onBack={(answered) => {
+      stopOnce();
+      // Bereits beantwortete Frage nicht doppelt zählen: beim Fortsetzen geht es mit der nächsten weiter
+      if (answered && !next(run)) return;
+      setPlaying(false); window.scrollTo({ top: 0 });
+    }} />;
 
   if (run && done) {
     const n = run.list.length, r = run.score / n;
@@ -71,8 +94,8 @@ export default function Test({ go }: { go: Go }) {
           </ul>
         )}
         <div className="row wrap">
-          {run.wrong.length > 0 && <button className="btn primary" onClick={() => start(run.wrong.map((w) => w.v))}>Nur Fehler wiederholen</button>}
-          <button className="btn" onClick={() => { setRun(null); loadSubject(subject).then(setData); }}>Neuer Test</button>
+          {run.wrong.length > 0 && <button className="btn primary" onClick={() => start(run.wrong.map((w) => w.v), run.mode, run.dir)}>Nur Fehler wiederholen</button>}
+          <button className="btn" onClick={() => { setRun(null); setDone(false); setPlaying(false); loadSubject(subject).then(setData); }}>Neuer Test</button>
         </div>
       </main>
     );
@@ -85,6 +108,16 @@ export default function Test({ go }: { go: Go }) {
         <SettingsButton onClick={() => go({ n: 'settings' })} />
       </header>
       <SubjectSwitch value={subject} onChange={(x) => setSettings({ subject: x })} />
+      {run && !done && (
+        <section className="glass pad stack">
+          <div className="row"><h3 className="grow">Test unterbrochen</h3><span className="muted small">Frage {run.i + 1} von {run.list.length} · {run.score} richtig</span></div>
+          <div className="qbar"><span style={{ width: `${(run.i / run.list.length) * 100}%` }} /></div>
+          <div className="row wrap">
+            <button className={'btn primary grow ' + subject} onClick={resume}>Test fortsetzen</button>
+            <button className="btn" onClick={() => setRun(null)}>Verwerfen</button>
+          </div>
+        </section>
+      )}
       {!data && <div className="glass pad muted">Lädt …</div>}
       {data && units.length === 0 && (
         <div className="glass empty"><p className="muted" style={{ margin: 0 }}>Für {SUBJECTS[subject].name} gibt es noch keine Unit.</p><button className="btn primary" onClick={() => go({ n: 'edit' })}>Unit anlegen</button></div>
@@ -114,8 +147,8 @@ export default function Test({ go }: { go: Go }) {
           )}
           <label className="switch"><span>Nur Fehler üben <span className="muted small">({wrongCount})</span></span><input type="checkbox" id="onlywrong" checked={onlyWrong} onChange={(e) => setOnlyWrong(e.target.checked)} disabled={!wrongCount} /></label>
         </section>
-        <button className={'btn block ' + subject} disabled={!pool.length || (mode === 'mc' && (data.vocab.length < 4))} onClick={() => start(pool)}>
-          {pool.length ? `Test starten · ${pool.length} Vokabeln` : 'Keine Vokabeln ausgewählt'}
+        <button className={'btn block ' + subject + (run && !done ? ' ghost' : '')} disabled={!pool.length || (mode === 'mc' && (data.vocab.length < 4))} onClick={() => start(pool)}>
+          {pool.length ? `${run && !done ? 'Neuen Test starten' : 'Test starten'} · ${pool.length} Vokabeln` : 'Keine Vokabeln ausgewählt'}
         </button>
         {mode === 'mc' && data.vocab.length < 4 && <p className="hint center">Für Auswahl-Fragen braucht es mindestens 4 Vokabeln.</p>}
       </>)}
@@ -123,9 +156,9 @@ export default function Test({ go }: { go: Go }) {
   );
 }
 
-function Question({ subject, mode, dir, run, all, onAnswer, onNext, onQuit }: {
-  subject: Subject; mode: Mode; dir: Dir; run: { list: Vocab[]; i: number; score: number; wrong: Wrong[] }; all: Vocab[];
-  onAnswer: (ok: boolean, you: string) => void; onNext: () => void; onQuit: () => void;
+function Question({ subject, mode, dir, run, all, onAnswer, onNext, onBack }: {
+  subject: Subject; mode: Mode; dir: Dir; run: Run; all: Vocab[];
+  onAnswer: (ok: boolean, you: string) => void; onNext: () => void; onBack: (answered: boolean) => void;
 }) {
   const v = run.list[run.i];
   const toDe = mode === 'listen' ? false : dir === 'to-de';
@@ -135,6 +168,20 @@ function Question({ subject, mode, dir, run, all, onAnswer, onNext, onQuit }: {
   const [typed, setTyped] = useState('');
   const [g, setG] = useState<Grade | null>(null);
   const inp = useRef<HTMLInputElement>(null);
+  const auto = useSettings().autoNext;
+  // Immer die aktuelle onNext verwenden (nach onAnswer hat der Elternteil neu gerendert)
+  const nextRef = useRef(onNext); nextRef.current = onNext;
+  const gone = useRef(false);
+  useEffect(() => () => { gone.current = true; }, []);
+  const [autoing, setAutoing] = useState(false);
+  /** Richtige Antwort: Vorlesen abwarten, kurz stehen lassen, dann selbst weiter */
+  function autoAdvance(spoken: Promise<void>) {
+    setAutoing(true);
+    const t0 = Date.now();
+    Promise.race([spoken, new Promise((r) => setTimeout(r, 4000))]).then(() => {
+      setTimeout(() => { if (!gone.current) { gone.current = true; nextRef.current(); } }, Math.max(600, 1300 - (Date.now() - t0)));
+    });
+  }
   const options = useMemo(() => {
     if (mode !== 'mc') return [];
     const key = (t: string) => t.toLowerCase().replace(/\([^)]*\)/g, '').replace(/[^\p{L}\d]+/gu, '');
@@ -155,7 +202,8 @@ function Question({ subject, mode, dir, run, all, onAnswer, onNext, onQuit }: {
   function pick(o: string) {
     if (answered) return;
     setPicked(o); onAnswer(o === answer, o);
-    speakOnce(v.term, subject);
+    const spoken = speakOnce(v.term, subject);
+    if (auto && o === answer) autoAdvance(spoken);
   }
   function check(e: React.FormEvent) {
     e.preventDefault();
@@ -163,7 +211,8 @@ function Question({ subject, mode, dir, run, all, onAnswer, onNext, onQuit }: {
     if (!typed.trim()) return;
     const r = grade(typed, answer);
     setG(r); onAnswer(r === 'ok', typed);
-    speakOnce(v.term, subject, r !== 'ok' && (mode === 'listen' || !toDe));
+    const spoken = speakOnce(v.term, subject, r !== 'ok' && (mode === 'listen' || !toDe));
+    if (auto && r === 'ok') autoAdvance(spoken);
   }
   const keys = ACCENTS[toDe ? 'de' : subject];
   const insert = (k: string) => {
@@ -179,7 +228,7 @@ function Question({ subject, mode, dir, run, all, onAnswer, onNext, onQuit }: {
 
   return (
     <main className="app">
-      <div className="row"><span className="muted small grow">Frage {run.i + 1} von {run.list.length} · {run.score} richtig</span><button className="btn sm" onClick={onQuit}>Beenden</button></div>
+      <div className="row"><span className="muted small grow">Frage {run.i + 1} von {run.list.length} · {run.score} richtig</span><button className="btn sm" onClick={() => onBack(answered)}><IBack />Zurück</button></div>
       <div className="qbar"><span style={{ width: `${(run.i / run.list.length) * 100}%` }} /></div>
       <section className="glass pad stack">
         <span className="eyebrow">{mode === 'listen' ? 'Hör zu und schreib es auf' : toDe ? 'Was heißt das auf Deutsch?' : `Wie heißt das auf ${SUBJECTS[subject].name}?`}</span>
@@ -199,13 +248,12 @@ function Question({ subject, mode, dir, run, all, onAnswer, onNext, onQuit }: {
             lang={toDe ? 'de' : subject} autoCapitalize="off" autoCorrect="off" spellCheck={false} placeholder={toDe ? 'Auf Deutsch …' : `Auf ${SUBJECTS[subject].name} …`} aria-label="Deine Antwort" />
           {!answered && keys.length > 0 && <div className="acc">{keys.map((k) => <button type="button" key={k} onClick={() => insert(k)} aria-label={`${k} einfügen`}>{k}</button>)}</div>}
           {!answered && <button className="btn primary block">Prüfen</button>}
-          {answered && <button className="btn primary block">{run.i < run.list.length - 1 ? 'Weiter' : 'Ergebnis ansehen'}</button>}
         </form>
       )}
 
       {answered && (
         <div className={'fb ' + fbKind} role="status">
-          <b>{fbTitle}</b>
+          <b>{fbTitle}{autoing && <span className="small" style={{ fontWeight: 600, opacity: .8 }}> · gleich geht's weiter</span>}</b>
           <span className="sol" lang={subject}>{v.term} = {v.translation}</span>
           {!ok && mode !== 'mc' && <span className="small">Du hast geschrieben: {typed}</span>}
           <div className="row wrap">
@@ -214,7 +262,11 @@ function Question({ subject, mode, dir, run, all, onAnswer, onNext, onQuit }: {
           </div>
         </div>
       )}
-      {answered && mode === 'mc' && <button className="btn primary block" onClick={onNext}>{run.i < run.list.length - 1 ? 'Weiter' : 'Ergebnis ansehen'}</button>}
+      {answered && !autoing && (
+        <div className="dock">
+          <button className="btn primary block nextbtn" onClick={onNext}>{run.i < run.list.length - 1 ? 'Weiter' : 'Ergebnis ansehen'}</button>
+        </div>
+      )}
     </main>
   );
 }

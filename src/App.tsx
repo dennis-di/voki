@@ -21,6 +21,7 @@ export default function App() {
   const [session, setSession] = useState<Session | null | undefined>(undefined);
   const [profile, setProfile] = useState<Profile | null>(null);
   const [route, setRoute] = useState<Route>({ n: 'home' });
+  const [testActive, setTestActive] = useState(false);
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data }) => setSession(data.session));
@@ -41,7 +42,7 @@ export default function App() {
     { n: 'edit', label: 'Neu', icon: <IPlus /> },
     { n: 'test', label: 'Test', icon: <ICheck /> },
   ];
-  const showTabs = route.n !== 'unit' && route.n !== 'settings' && route.n !== 'admin' && !(route.n === 'edit' && route.id);
+  const showTabs = !(route.n === 'test' && testActive) && route.n !== 'unit' && route.n !== 'settings' && route.n !== 'admin' && !(route.n === 'edit' && route.id);
 
   return (
     <>
@@ -49,7 +50,7 @@ export default function App() {
       {route.n === 'home' && <Home profile={profile} go={go} />}
       {route.n === 'unit' && <UnitView id={route.id} go={go} />}
       {route.n === 'edit' && <Editor key={route.id || 'new'} id={route.id} profile={profile} go={go} />}
-      {route.n === 'test' && <Test go={go} />}
+      {route.n === 'test' && <Test go={go} onActive={setTestActive} />}
       {route.n === 'settings' && <Settings profile={profile} onProfile={reloadProfile} go={go} />}
       {route.n === 'admin' && profile.role === 'admin' && <Admin me={profile} go={go} />}
       {showTabs && (

@@ -103,6 +103,8 @@ h3 { font-size: 1.05rem; font-weight: 700; }
 .btn.en { background: var(--grad-en); color: #fff; border-color: transparent; }
 .btn.danger { background: var(--grad-bad); color: #fff; border-color: transparent; }
 .btn.block { width: 100%; padding: 14px; font-size: 1.02rem; }
+.btn.ghost { background: var(--glass-strong); color: var(--text); border-color: var(--glass-line); box-shadow: none; }
+.btn.nextbtn { padding: 17px; font-size: 1.1rem; border-radius: 20px; }
 .btn.sm { padding: 7px 12px; font-size: .88rem; border-radius: 11px; }
 .btn svg, .ib svg { width: 18px; height: 18px; flex: none; }
 .ib { width: 42px; height: 42px; border-radius: 50%; border: 1px solid var(--glass-line); background: var(--glass-strong); display: inline-grid; place-items: center; font-weight: 800; font-size: .78rem; padding: 0; flex: none; }

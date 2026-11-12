@@ -63,6 +63,11 @@ export default function Settings({ profile, onProfile, go }: { profile: Profile;
       </section>
 
       <section className="glass pad stack">
+        <h2>Test</h2>
+        <label className="switch"><span>Bei richtiger Antwort automatisch weiter <span className="muted small">(bei Fehlern bleibt „Weiter“)</span></span><input type="checkbox" id="autonext" checked={s.autoNext} onChange={(e) => setSettings({ autoNext: e.target.checked })} /></label>
+      </section>
+
+      <section className="glass pad stack">
         <h2>Vorlesen</h2>
         {!hasSpeech && <div className="note err">Dieser Browser kann nicht vorlesen. Öffne die App in Safari oder Chrome.</div>}
         <label className="f">Tempo <span className="hint">{Math.round(s.rate * 100)} %</span>
