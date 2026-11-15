@@ -63,6 +63,19 @@ export default function Settings({ profile, onProfile, go }: { profile: Profile;
       </section>
 
       <section className="glass pad stack">
+        <h2>Ziel &amp; Liga</h2>
+        <div className="stack" style={{ gap: 6 }}>
+          <span style={{ fontWeight: 700, fontSize: '.9rem' }}>Tagesziel: richtige Antworten pro Tag</span>
+          <div className="seg" role="group" aria-label="Tagesziel">
+            {[5, 10, 15, 20].map((n) => <button key={n} aria-pressed={s.dailyGoal === n} onClick={() => setSettings({ dailyGoal: n })}>{n}</button>)}
+          </div>
+          <p className="hint">Lieber klein und jeden Tag als gross und selten. Ein Tag pro Woche darf ausfallen (Joker).</p>
+        </div>
+        <label className="switch"><span>Bei der Wochen-Liga mitmachen <span className="muted small">(andere sehen deinen Anzeigenamen und deine XP der Woche)</span></span>
+          <input type="checkbox" id="league" checked={!!profile.in_league} onChange={async (e) => { try { await updateMyProfile(profile.id, { in_league: e.target.checked }); onProfile(); } catch { toast('Ging nicht. Ist die Datenbank aktualisiert?'); } }} /></label>
+      </section>
+
+      <section className="glass pad stack">
         <h2>Test</h2>
         <label className="switch"><span>Bei richtiger Antwort automatisch weiter <span className="muted small">(bei Fehlern bleibt „Weiter“)</span></span><input type="checkbox" id="autonext" checked={s.autoNext} onChange={(e) => setSettings({ autoNext: e.target.checked })} /></label>
       </section>

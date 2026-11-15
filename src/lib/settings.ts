@@ -13,8 +13,9 @@ export interface Settings {
   male: boolean;
   voice: Partial<Record<'fr' | 'en' | 'de', string>>;
   autoNext: boolean;
+  dailyGoal: number;
 }
-const DEFAULTS: Settings = { theme: 'system', subject: 'fr', rate: 0.85, spell: true, again: true, loop: false, spellLang: 'target', builtinLetters: true, male: true, voice: {}, autoNext: true };
+const DEFAULTS: Settings = { theme: 'system', subject: 'fr', rate: 0.85, spell: true, again: true, loop: false, spellLang: 'target', builtinLetters: true, male: true, voice: {}, autoNext: true, dailyGoal: 10 };
 const KEY = 'vw:settings';
 let state: Settings = DEFAULTS;
 try { state = { ...DEFAULTS, ...JSON.parse(localStorage.getItem(KEY) || '{}') }; } catch { /* privat */ }

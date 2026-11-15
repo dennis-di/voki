@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { adminSetUser, createInvite, deleteInvite, listInvites, listProfiles } from '../lib/data';
+import { adminProgress, adminSetUser, adminWeakWords, createInvite, deleteInvite, listInvites, listProfiles } from '../lib/data';
 import { callFn } from '../lib/supabase';
 import type { Invite, Profile } from '../lib/types';
 import { copyText, randomCode, toast } from '../ui/common';
@@ -16,9 +16,12 @@ export default function Admin({ me, go }: { me: Profile; go: Go }) {
   const [pwFor, setPwFor] = useState<string | null>(null);
   const [pw, setPw] = useState('');
   const [delFor, setDelFor] = useState<string | null>(null);
+  const [progress, setProgress] = useState<Awaited<ReturnType<typeof adminProgress>>>([]);
+  const [weak, setWeak] = useState<{ id: string; list: { term: string; translation: string; wrong: number }[] } | null>(null);
 
   const reload = () => { listProfiles().then(setUsers).catch(() => toast('Konten konnten nicht geladen werden')); listInvites().then(setInvites).catch(() => { /* egal */ }); };
   useEffect(reload, []);
+  useEffect(() => { adminProgress().then(setProgress).catch(() => { /* alte Datenbank */ }); }, []);
 
   const shareText = (code: string) => `Hallo! Hier ist dein Einladungscode für Voki: ${code}\nApp öffnen: ${location.origin}\nDort „Neues Konto“ wählen, Code eingeben und Benutzername + Passwort festlegen.`;
 
@@ -52,6 +55,30 @@ export default function Admin({ me, go }: { me: Profile; go: Go }) {
         <button className="ib" onClick={() => go({ n: 'settings' })} aria-label="Zurück zu den Einstellungen"><IBack /></button>
         <div className="grow"><span className="eyebrow">Einstellungen › Admin</span><h1>Konten &amp; <span className="gradtext">Einladungen</span></h1></div>
       </header>
+
+      {progress.length > 0 && (
+        <section className="solid">
+          <h2 style={{ padding: '16px 16px 4px' }}>Eltern-Ansicht</h2>
+          <ul className="list">
+            {progress.map((p) => {
+              const ago = p.last_day ? Math.round((Date.now() - Date.parse(p.last_day + 'T12:00:00Z')) / 864e5) : null;
+              return (
+                <li key={p.user_id}>
+                  <div className="row"><b className="grow">{p.name}</b><span className="muted small">{ago === null ? 'noch nie geübt' : ago <= 0 ? 'heute geübt' : ago === 1 ? 'gestern geübt' : `vor ${ago} Tagen geübt`}</span></div>
+                  <div className="prog">
+                    <span><b>{p.mastered}</b>/{p.words} sitzen</span><span><b>{p.to_practice}</b> zum Üben</span><span><b>{p.days_active_14}</b> von 14 Tagen</span><span><b>{p.xp_week}</b> XP Woche</span>
+                  </div>
+                  {p.to_practice > 0 && <button className="btn sm" style={{ alignSelf: 'flex-start' }} onClick={async () => {
+                    if (weak?.id === p.user_id) { setWeak(null); return; }
+                    try { setWeak({ id: p.user_id, list: await adminWeakWords(p.user_id) }); } catch { toast('Konnte nicht geladen werden'); }
+                  }}>{weak?.id === p.user_id ? 'Ausblenden' : 'Schwierige Wörter'}</button>}
+                  {weak?.id === p.user_id && <ul className="weak">{weak.list.map((w, i) => <li key={i}><b>{w.term}</b> = {w.translation} <span className="muted small">· {w.wrong}× falsch</span></li>)}</ul>}
+                </li>
+              );
+            })}
+          </ul>
+        </section>
+      )}
 
       <section className="glass pad stack">
         <h2>Neue Einladung</h2>
