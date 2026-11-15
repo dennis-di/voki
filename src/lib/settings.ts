@@ -14,11 +14,17 @@ export interface Settings {
   voice: Partial<Record<'fr' | 'en' | 'de', string>>;
   autoNext: boolean;
   dailyGoal: number;
+  v?: number;
 }
-const DEFAULTS: Settings = { theme: 'system', subject: 'fr', rate: 0.85, spell: true, again: true, loop: false, spellLang: 'target', builtinLetters: true, male: true, voice: {}, autoNext: true, dailyGoal: 10 };
+const DEFAULTS: Settings = { theme: 'system', subject: 'fr', rate: 0.85, spell: true, again: true, loop: false, spellLang: 'de', builtinLetters: true, male: true, voice: {}, autoNext: true, dailyGoal: 10, v: 2 };
 const KEY = 'vw:settings';
 let state: Settings = DEFAULTS;
-try { state = { ...DEFAULTS, ...JSON.parse(localStorage.getItem(KEY) || '{}') }; } catch { /* privat */ }
+try {
+  const stored = JSON.parse(localStorage.getItem(KEY) || '{}');
+  state = { ...DEFAULTS, ...stored };
+  // v2: Buchstabieren standardmässig auf Deutsch (einmalig für bestehende Geräte)
+  if (!stored.v || stored.v < 2) { state = { ...state, spellLang: 'de', v: 2 }; localStorage.setItem(KEY, JSON.stringify(state)); }
+} catch { /* privat */ }
 const subs = new Set<() => void>();
 
 export const getSettings = () => state;

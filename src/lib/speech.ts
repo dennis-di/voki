@@ -35,17 +35,43 @@ export function pickVoice(l: Lang): SpeechSynthesisVoice | null {
 }
 export const hasSpeech = !!synth;
 
-/* ───────── Ton freischalten (iPhone: Lautlos-Schalter, Medienlautstärke) ───────── */
+/* ───────── Ton freischalten (iPhone: Lautlos-Schalter, Medienlautstärke) ─────────
+   iOS behandelt Webseiten-Ton standardmässig wie Klingeltöne: Der Lautlos-Schalter macht ihn stumm.
+   Solange auf der Seite ein Medien-Element läuft, gilt die „Wiedergabe“-Kategorie wie bei Musik:
+   Lautlos-Schalter wird ignoriert, Lautstärke über die Tasten. Darum läuft während des Vorlesens
+   leise eine stumme Tonspur im Hintergrund mit. */
 const clip = typeof Audio !== 'undefined' ? new Audio() : null;
 if (clip) { clip.setAttribute('playsinline', ''); clip.preload = 'auto'; }
 let unlocked = false;
 const SILENT = 'data:audio/wav;base64,UklGRiQAAABXQVZFZm10IBAAAAABAAEAQB8AAIA+AAACABAAZGF0YQAAAAA=';
-export function unlockAudio() {
+
+/** 2 Sekunden Stille als WAV (8 kHz, 8 bit) – zum Endlos-Abspielen */
+function silentWav(): string {
+  const n = 16000, b = new Uint8Array(44 + n), d = new DataView(b.buffer);
+  const w = (o: number, t: string) => [...t].forEach((c, i) => (b[o + i] = c.charCodeAt(0)));
+  w(0, 'RIFF'); d.setUint32(4, 36 + n, true); w(8, 'WAVE'); w(12, 'fmt '); d.setUint32(16, 16, true);
+  d.setUint16(20, 1, true); d.setUint16(22, 1, true); d.setUint32(24, 8000, true); d.setUint32(28, 8000, true);
+  d.setUint16(32, 1, true); d.setUint16(34, 8, true); w(36, 'data'); d.setUint32(40, n, true); b.fill(128, 44);
+  return URL.createObjectURL(new Blob([b], { type: 'audio/wav' }));
+}
+const keep = typeof Audio !== 'undefined' ? new Audio() : null;
+if (keep) { keep.setAttribute('playsinline', ''); keep.loop = true; keep.preload = 'auto'; try { keep.src = silentWav(); } catch { /* alt */ } }
+let keepTimer: ReturnType<typeof setTimeout> | undefined;
+/** Wiedergabe-Modus halten: stumme Spur läuft, bis 25 s lang nichts mehr gesprochen wurde */
+function holdPlayback() {
+  clearTimeout(keepTimer);
   try { (navigator as unknown as { audioSession?: { type: string } }).audioSession!.type = 'playback'; } catch { /* nicht vorhanden */ }
+  if (keep && keep.paused) keep.play().catch(() => { /* braucht Antippen */ });
+  keepTimer = setTimeout(() => { try { keep?.pause(); } catch { /* egal */ } }, 25000);
+}
+export function unlockAudio() {
+  holdPlayback();
   if (unlocked || !clip) return;
   unlocked = true;
   clip.src = SILENT; clip.play().catch(() => { /* egal */ });
 }
+// Nach Rückkehr in die App den Modus erneut setzen
+if (typeof document !== 'undefined') document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'hidden') { try { keep?.pause(); } catch { /* egal */ } } });
 
 /* ───────── Grundfunktionen ───────── */
 export function say(text: string, lang: Lang, rate = getSettings().rate): Promise<void> {
@@ -58,6 +84,9 @@ export function say(text: string, lang: Lang, rate = getSettings().rate): Promis
     const fin = () => { if (!done) { done = true; clearTimeout(t); res(); } };
     u.onend = fin; u.onerror = fin;
     const t = setTimeout(fin, 2500 + (text.length * 170) / rate);
+    holdPlayback();
+    // iOS: hängende Sprachausgabe lösen, sonst bleibt sie manchmal stumm
+    try { if (synth.paused) synth.resume(); } catch { /* egal */ }
     synth.speak(u);
   });
 }
@@ -68,6 +97,8 @@ function playClip(src: string): Promise<void> {
     const fin = () => { if (!done) { done = true; clearTimeout(t); clip.onended = clip.onerror = null; res(); } };
     clip.onended = fin; clip.onerror = fin;
     const r = Math.max(0.7, Math.min(1.2, getSettings().rate / 0.85));
+    // Aufnahme selbst ist Medienton; stumme Spur kurz anhalten, damit sich die beiden nicht stören
+    try { keep?.pause(); } catch { /* egal */ }
     clip.src = src; clip.defaultPlaybackRate = r; clip.playbackRate = r;
     const t = setTimeout(fin, 6000);
     clip.play().catch(fin);

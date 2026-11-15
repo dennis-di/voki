@@ -91,8 +91,8 @@ export default function Settings({ profile, onProfile, go }: { profile: Profile;
         <div className="stack" style={{ gap: 6 }}>
           <span className="lbl" style={{ fontWeight: 700, fontSize: '.9rem' }}>Buchstaben ansagen</span>
           <div className="seg" role="group" aria-label="Buchstaben ansagen">
-            <button aria-pressed={s.spellLang === 'target'} onClick={() => setSettings({ spellLang: 'target' })}>In der Fremdsprache</button>
             <button aria-pressed={s.spellLang === 'de'} onClick={() => setSettings({ spellLang: 'de' })}>Auf Deutsch</button>
+            <button aria-pressed={s.spellLang === 'target'} onClick={() => setSettings({ spellLang: 'target' })}>In der Fremdsprache</button>
           </div>
         </div>
         <label className="switch"><span>Eingebaute Buchstaben-Aufnahmen <span className="muted small">(klarer als die Handy-Stimme)</span></span><input type="checkbox" id="builtin" checked={s.builtinLetters} onChange={(e) => setSettings({ builtinLetters: e.target.checked })} /></label>
@@ -111,7 +111,7 @@ export default function Settings({ profile, onProfile, go }: { profile: Profile;
             </div>
           );
         })}
-        <p className="hint">Fehlt eine gute Stimme? iPhone: Einstellungen › Bedienungshilfen › Gesprochene Inhalte › Stimmen, dort z. B. „Thomas“ (Französisch), „Daniel“ (Englisch), „Yannick“ (Deutsch) laden. Die Lautstärke regelst du mit den Tasten am Handy.</p>
+        <p className="hint">Fehlt eine gute Stimme? iPhone: Einstellungen › Bedienungshilfen › Gesprochene Inhalte › Stimmen, dort z. B. „Thomas“ (Französisch), „Daniel“ (Englisch), „Yannick“ (Deutsch) laden. Voki liest auch bei eingeschaltetem Lautlos-Schalter vor; die Lautstärke regelst du mit den Tasten am Handy. Bleibt eine Stimme still, eine andere wählen oder „Männliche Stimmen bevorzugen“ ausschalten.</p>
       </section>
 
       <section className="glass pad stack">
