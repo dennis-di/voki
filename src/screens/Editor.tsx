@@ -125,7 +125,7 @@ export default function Editor({ id, profile, go }: { id?: string; profile: Prof
   return (
     <main className="app">
       <header className="subhead">
-        {id && <button className="ib" onClick={() => go({ n: 'unit', id })} aria-label="Zurück"><IBack /></button>}
+        <button className="ib" onClick={() => go(id ? { n: 'unit', id } : { n: 'home' })} aria-label="Zurück"><IBack /></button>
         <div className="grow"><span className="eyebrow">{id ? 'Unit bearbeiten' : 'Neue Unit'}</span><h1>{id ? title || 'Unit' : `${L.name}-Vokabeln`}</h1></div>
       </header>
 

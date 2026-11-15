@@ -3,9 +3,11 @@ import type { Session } from '@supabase/supabase-js';
 import { supabase } from './lib/supabase';
 import { myProfile } from './lib/data';
 import type { Profile } from './lib/types';
-import { Background, Toaster } from './ui/common';
-import { IBook, ICheck, IPlus } from './ui/icons';
+import { Background, Toaster, toast } from './ui/common';
+import { IBook, ICheck } from './ui/icons';
 import { stopPlayer } from './lib/speech';
+import { justUpdated } from './lib/update';
+
 import Auth from './screens/Auth';
 import Home from './screens/Home';
 import UnitView from './screens/UnitView';
@@ -24,6 +26,7 @@ export default function App() {
   const [route, setRoute] = useState<Route>({ n: 'home' });
   const [testActive, setTestActive] = useState(false);
 
+  useEffect(() => { if (justUpdated()) setTimeout(() => toast('Voki wurde aktualisiert'), 600); }, []);
   useEffect(() => {
     supabase.auth.getSession().then(({ data }) => setSession(data.session));
     const { data } = supabase.auth.onAuthStateChange((_e, s) => setSession(s));
@@ -40,10 +43,9 @@ export default function App() {
 
   const tabs: { n: Route['n']; label: string; icon: JSX.Element }[] = [
     { n: 'home', label: 'Lernen', icon: <IBook /> },
-    { n: 'edit', label: 'Neu', icon: <IPlus /> },
     { n: 'test', label: 'Test', icon: <ICheck /> },
   ];
-  const showTabs = !(route.n === 'test' && testActive) && route.n !== 'unit' && route.n !== 'settings' && route.n !== 'admin' && !(route.n === 'edit' && route.id);
+  const showTabs = route.n === 'home' || (route.n === 'test' && !testActive);
 
   return (
     <>
@@ -58,8 +60,8 @@ export default function App() {
         <nav className="dock" aria-label="Hauptmenü">
           <div className="tabbar glass" style={{ ['--n' as string]: tabs.length }}>
             {tabs.map((t) => (
-              <button key={t.n} className={'tab' + (t.n === 'edit' ? ' plus' : '')} aria-current={route.n === t.n ? 'page' : undefined} onClick={() => go({ n: t.n } as Route)}>
-                {t.n === 'edit' ? <span className="fab">{t.icon}</span> : t.icon}
+              <button key={t.n} className="tab" aria-current={route.n === t.n ? 'page' : undefined} onClick={() => go({ n: t.n } as Route)}>
+                {t.icon}
                 <span>{t.label}</span>
               </button>
             ))}

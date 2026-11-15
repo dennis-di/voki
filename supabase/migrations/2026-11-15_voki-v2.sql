@@ -32,6 +32,14 @@ update public.vocab v set page = substring(u.subtitle from '(\d{1,4})')
 from public.units u
 where v.unit_id = u.id and v.page is null and u.subtitle ~ '\d';
 
+-- Männlich/weiblich aus dem Artikel ableiten (nur Französisch, l' bleibt offen)
+update public.vocab v set gender = case
+    when v.term ~* '\(\s*f\.?\s*\)' or v.term ~* '^(la|une)\s' then 'f'
+    when v.term ~* '\(\s*m\.?\s*\)' or v.term ~* '^(le|un)\s' then 'm' end
+from public.units u
+where v.unit_id = u.id and u.subject = 'fr' and v.gender is null and v.kind = 'word'
+  and (v.term ~* '^(le|la|un|une)\s' or v.term ~* '\(\s*[mf]\.?\s*\)');
+
 -- ───────────── Lernstufen ─────────────
 -- 0 neu · 1 erkennt (Auswahl FR→DE) · 2 ordnet zu (Auswahl DE→FR) · 3 schreibt richtig = sitzt
 alter table public.vocab_stats add column if not exists level  int not null default 0;

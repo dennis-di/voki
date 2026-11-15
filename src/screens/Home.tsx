@@ -1,12 +1,12 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import type { Go } from '../App';
-import { deleteExam, leagueWeek, loadActivity, loadExams, loadSubject, saveExam, saveUnit } from '../lib/data';
+import { deleteExam, deleteUnit, leagueWeek, loadActivity, loadExams, loadSubject, saveExam, saveUnit } from '../lib/data';
 import { ACCESSORIES, daysBetween, examPlan, homeMood, levelOf, localDay, masteredUnits, streakInfo, unlockedAccessories } from '../lib/progress';
 import { SAMPLE_FR } from '../lib/sample';
 import { setSettings, useSettings } from '../lib/settings';
 import { SUBJECTS, isWord, type Activity, type Exam, type Profile, type Stat, type Subject, type Unit, type Vocab } from '../lib/types';
 import { Logo, SettingsButton, toast } from '../ui/common';
-import { ICamera, ITrash } from '../ui/icons';
+import { ICamera, IPlus, ITrash } from '../ui/icons';
 import { Voki } from '../ui/Voki';
 
 export function SubjectSwitch({ value, onChange }: { value: Subject; onChange: (s: Subject) => void }) {
@@ -42,6 +42,26 @@ export default function Home({ profile, go }: { profile: Profile; go: Go }) {
   const [busy, setBusy] = useState(false);
   const [examForm, setExamForm] = useState<{ id?: string; title: string; day: string; unit_ids: string[] } | null>(null);
   const [showCloset, setShowCloset] = useState(false);
+  // Langes Drücken auf eine Unit: Löschen-Modus
+  const [editMode, setEditMode] = useState(false);
+  const [confirmDel, setConfirmDel] = useState<Unit | null>(null);
+  const press = useRef<{ t?: ReturnType<typeof setTimeout>; long: boolean; x: number; y: number }>({ long: false, x: 0, y: 0 });
+  const startPress = (e: React.PointerEvent) => {
+    press.current.long = false; press.current.x = e.clientX; press.current.y = e.clientY;
+    clearTimeout(press.current.t);
+    press.current.t = setTimeout(() => { press.current.long = true; setEditMode(true); try { navigator.vibrate?.(30); } catch { /* egal */ } }, 550);
+  };
+  const movePress = (e: React.PointerEvent) => { if (Math.hypot(e.clientX - press.current.x, e.clientY - press.current.y) > 10) clearTimeout(press.current.t); };
+  const endPress = () => clearTimeout(press.current.t);
+  async function removeUnit(u: Unit) {
+    try {
+      await deleteUnit(u.id);
+      setData((d) => (d ? { ...d, units: d.units.filter((x) => x.id !== u.id), vocab: d.vocab.filter((v) => v.unit_id !== u.id) } : d));
+      toast(`„${u.title}“ gelöscht`);
+      if ((data?.units.length || 0) <= 1) setEditMode(false);
+    } catch { toast('Löschen hat nicht geklappt. Bist du online?'); }
+    setConfirmDel(null);
+  }
 
   const reloadExams = () => loadExams(s.subject).then(setExams);
   useEffect(() => {
@@ -178,23 +198,32 @@ export default function Home({ profile, go }: { profile: Profile; go: Go }) {
             {s.subject === 'fr' && <button className="link" disabled={busy} onClick={addSample}>Beispiel „Au début“ hinzufügen</button>}
           </div>
         )}
-        {data && data.units.length > 0 && (
-          <div className="units">
+        {data && data.units.length > 0 && (<>
+          {editMode && <div className="row editbar"><span className="small grow">Tippe auf ✕, um eine Unit zu löschen.</span><button className="btn sm" onClick={() => setEditMode(false)}>Fertig</button></div>}
+          <div className={'units' + (editMode ? ' editing' : '')}>
             {data.units.map((u) => {
               const vs = words.filter((v) => v.unit_id === u.id);
               const lv = [0, 1, 2, 3].map((l) => vs.filter((v) => Math.min(3, levelOf(statBy.get(v.id))) === l).length);
               const pl = pagesLabel(vs);
               return (
-                <button key={u.id} className="ucard glass" onClick={() => go({ n: 'unit', id: u.id })}>
-                  <h3>{u.title}</h3>
-                  {(u.subtitle || pl) && <span className="muted small">{[u.subtitle, pl].filter(Boolean).join(' · ')}</span>}
-                  <span className="meta">{vs.length} Vokabeln · {lv[3]} sitzen</span>
-                  <div className="lbar" aria-hidden="true">{[3, 2, 1].map((l) => <span key={l} className={'l' + l} style={{ width: `${vs.length ? (lv[l] / vs.length) * 100 : 0}%` }} />)}</div>
-                </button>
+                <div key={u.id} className="uwrap">
+                  <button className="ucard glass"
+                    onPointerDown={startPress} onPointerMove={movePress} onPointerUp={endPress} onPointerLeave={endPress} onPointerCancel={endPress}
+                    onContextMenu={(e) => e.preventDefault()}
+                    onClick={() => { if (press.current.long) { press.current.long = false; return; } if (editMode) { setEditMode(false); return; } go({ n: 'unit', id: u.id }); }}>
+                    <h3>{u.title}</h3>
+                    {(u.subtitle || pl) && <span className="muted small">{[u.subtitle, pl].filter(Boolean).join(' · ')}</span>}
+                    <span className="meta">{vs.length} Vokabeln · {lv[3]} sitzen</span>
+                    <div className="lbar" aria-hidden="true">{[3, 2, 1].map((l) => <span key={l} className={'l' + l} style={{ width: `${vs.length ? (lv[l] / vs.length) * 100 : 0}%` }} />)}</div>
+                  </button>
+                  {editMode && <button className="udel" aria-label={`${u.title} löschen`} onClick={() => setConfirmDel(u)}>✕</button>}
+                </div>
               );
             })}
           </div>
-        )}
+          <button className={'btn block newunit ' + s.subject} onClick={() => go({ n: 'edit' })}><IPlus />Neue Unit</button>
+          <p className="hint center">Lange auf eine Unit drücken, um sie zu löschen.</p>
+        </>)}
       </section>
 
       {profile.in_league && league.length > 0 && (
@@ -204,6 +233,17 @@ export default function Home({ profile, go }: { profile: Profile; go: Go }) {
             {league.map((l, i) => <li key={i} className={l.me ? 'me' : ''}><div className="row"><b className="rank">{i + 1}</b><span className="grow">{l.name}</span><b>{l.xp} XP</b></div></li>)}
           </ol>
         </section>
+      )}
+      {confirmDel && (
+        <div className="modal" role="dialog" aria-modal="true" aria-labelledby="deltitle" onClick={() => setConfirmDel(null)}>
+          <div className="glass pad stack sheet" onClick={(e) => e.stopPropagation()}>
+            <Voki mood="sad" size={70} />
+            <h2 id="deltitle">„{confirmDel.title}“ wirklich löschen?</h2>
+            <p className="muted" style={{ margin: 0 }}>Alle Vokabeln und der Lernstand dieser Unit gehen verloren. Das lässt sich nicht rückgängig machen.</p>
+            <button className="btn danger block" onClick={() => removeUnit(confirmDel)}><ITrash />Ja, löschen</button>
+            <button className="btn block" onClick={() => setConfirmDel(null)} autoFocus>Abbrechen</button>
+          </div>
+        </div>
       )}
     </main>
   );
