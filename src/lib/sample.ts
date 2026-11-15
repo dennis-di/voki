@@ -1,5 +1,6 @@
 // Beispiel-Unit: Au début (Seite 158)
 import type { Row } from './types';
+import { guessGender } from './text';
 const S: [string, string, string, string][] = [
   ['1', 'Bienvenue!', 'bjɛ̃vny', 'Willkommen!'], ['1', 'Bonjour.', 'bɔ̃ʒuʀ', 'Guten Tag!'], ['1', "je m'appelle", 'ʒəmapɛl', 'ich heiße'],
   ['1', 'moi', 'mwa', 'ich (betont)'], ['1', "c'est", 'sɛ', 'das ist'], ['1', 'Salut! (fam.)', 'saly', 'Hallo! (ugs.); Grüß dich! (ugs.); Tschüs! (ugs.)'],
@@ -9,4 +10,4 @@ const S: [string, string, string, string][] = [
   ['5', 'Ça va bien.', 'savabjɛ̃', 'Es geht (mir) gut.'], ['5', 'Au revoir!', 'ɔʀvwaʀ', 'Auf Wiedersehen!'], ['5', 'voilà', 'vwala', 'da ist / das ist; da sind / das sind'],
   ['5', 'Bonjour les amis!', 'bɔ̃ʒuʀlezami', 'Guten Tag, Freunde!'],
 ];
-export const SAMPLE_FR = { title: 'Au début', subtitle: 'Seite 158', rows: S.map(([section, term, ipa, translation], i): Row => ({ key: 's' + i, section, term, ipa, translation })) };
+export const SAMPLE_FR = { title: 'Au début', subtitle: 'Seite 158', rows: S.map(([section, term, ipa, translation], i): Row => ({ key: 's' + i, kind: 'word', page: '158', section, term, ipa, translation, gender: guessGender(term, 'fr'), plural: '', note: '', examples: [] })) };

@@ -1,10 +1,11 @@
 // Fotos einlesen: entweder über Claude (Server-Funktion) oder kostenlos im Browser (Tesseract).
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { callFn } from './supabase';
-import type { Subject } from './types';
+import type { Example, Subject } from './types';
+import { guessGender } from './text';
 import { parseOcrWords } from './parseOcr.js';
 
-export interface OcrRow { section: string; term: string; ipa: string; translation: string }
+export interface OcrRow { kind: 'word' | 'rule'; page: string; section: string; term: string; ipa: string; translation: string; gender: '' | 'm' | 'f'; plural: string; note: string; examples: Example[] }
 import type { OcrWord as Word } from './parseOcr.js';
 
 /* OCR-Wörter (Text + Position) -> Vokabelzeilen. Erwartet: links Französisch (evtl. mit [Lautschrift]), rechts Deutsch. */
@@ -41,9 +42,16 @@ function flattenLight(c: HTMLCanvasElement) {
   g.putImageData(d, 0, 0);
 }
 
-const toRows = (sections: any[]): OcrRow[] => sections.flatMap((s) => s.items.map((it: any) => ({
-  section: s.name || '', term: it.fr ?? it.term ?? '', ipa: it.ipa || '', translation: it.de ?? it.translation ?? '',
-})));
+const toRows = (sections: any[], subject: Subject, page = ''): OcrRow[] => sections.flatMap((s) => s.items.map((it: any): OcrRow => {
+  if (it.kind === 'rule') return { kind: 'rule', page: it.page || page, section: s.name || '', term: String(it.text ?? it.term ?? ''), ipa: '', translation: '', gender: '', plural: '', note: '', examples: [] };
+  const term = it.fr ?? it.term ?? '';
+  const g = it.gender === 'm' || it.gender === 'f' ? it.gender : guessGender(term, subject);
+  return {
+    kind: 'word', page: it.page || page, section: s.name || '', term, ipa: it.ipa || '', translation: it.de ?? it.translation ?? '',
+    gender: g, plural: it.plural || '', note: it.note || '',
+    examples: Array.isArray(it.examples) ? it.examples.filter((e: any) => e && e.fr).map((e: any) => ({ fr: String(e.fr), de: String(e.de || '') })) : [],
+  };
+})).filter((r) => r.term && (r.kind === 'rule' || r.translation));
 
 /** Kostenlos im Browser */
 export async function readWithTesseract(file: Blob, subject: Subject, onStatus: (t: string) => void): Promise<OcrRow[]> {
@@ -62,18 +70,19 @@ export async function readWithTesseract(file: Blob, subject: Subject, onStatus: 
     const words: Word[] = [];
     for (const b of r.data.blocks || []) for (const p of b.paragraphs || []) for (const l of p.lines || []) for (const w of l.words || [])
       words.push({ t: w.text, x0: w.bbox.x0, y0: w.bbox.y0, x1: w.bbox.x1, y1: w.bbox.y1, c: w.confidence });
-    return toRows(parseOcrWords(words));
+    return toRows(parseOcrWords(words), subject);
   } finally { worker.terminate().catch(() => { /* egal */ }); }
 }
 
 /** Über Claude (Server). Fehlercodes: no_key, daily_limit, bad_key, no_credit, unreadable, … */
-export async function readWithClaude(file: Blob, subject: Subject): Promise<{ rows?: OcrRow[]; title?: string; error?: string }> {
+export async function readWithClaude(file: Blob, subject: Subject): Promise<{ rows?: OcrRow[]; title?: string; page?: string; error?: string }> {
   const img = await loadImage(file);
   const c = toCanvas(img, 2000, false);
   const dataUrl = c.toDataURL('image/jpeg', 0.85);
-  const { data, error } = await callFn<{ title: string; subtitle: string; sections: any[] }>('read-photo', {
-    subject, media_type: 'image/jpeg', image: dataUrl.split(',')[1],
+  const { data, error } = await callFn<{ title: string; subtitle: string; page?: string; sections: any[] }>('read-photo', {
+    subject, media_type: 'image/jpeg', image: dataUrl.split(',')[1], v: 2,
   });
   if (error || !data) return { error: error || 'failed' };
-  return { rows: toRows(data.sections), title: [data.title, data.subtitle].filter(Boolean).join(' · ') };
+  const page = String(data.page || (data.subtitle || '').match(/\d{1,4}/)?.[0] || '');
+  return { rows: toRows(data.sections, subject, page), title: data.title || '', page };
 }

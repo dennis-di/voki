@@ -113,10 +113,10 @@ function speakLetter(ch: string, lang: Lang): Promise<void> | null {
 
 /* ───────── Abspieler ───────── */
 export interface PlayerState {
-  queue: Vocab[]; pos: number; playing: boolean; single: boolean; only: 'spell' | null; scope: string;
+  queue: Vocab[]; pos: number; playing: boolean; single: boolean; only: 'spell' | null; scope: string; swing: boolean;
   activeId: string | null; spell: { id: string; chars: string[]; idx: number } | null;
 }
-let st: PlayerState = { queue: [], pos: 0, playing: false, single: false, only: null, scope: '', activeId: null, spell: null };
+let st: PlayerState = { queue: [], pos: 0, playing: false, single: false, only: null, scope: '', swing: false, activeId: null, spell: null };
 let run = 0, subject: Subject = 'fr';
 const psubs = new Set<() => void>();
 const emit = (patch: Partial<PlayerState>) => { st = { ...st, ...patch }; psubs.forEach((f) => f()); };
@@ -133,22 +133,22 @@ async function wake(on: boolean) {
 }
 
 export function stopPlayer() { run++; stopSound(); emit({ playing: false, spell: null }); wake(false); }
-export function startPlayer(queue: Vocab[], pos: number, subj: Subject, opts: { single?: boolean; only?: 'spell' | null; scope?: string } = {}) {
+export function startPlayer(queue: Vocab[], pos: number, subj: Subject, opts: { single?: boolean; only?: 'spell' | null; scope?: string; swing?: boolean } = {}) {
   unlockAudio(); stopSound();
   subject = subj;
   const my = ++run;
-  emit({ queue, pos, single: !!opts.single, only: opts.only ?? null, scope: opts.scope ?? (opts.single ? 'Vokabel' : st.scope), playing: true, spell: null });
+  emit({ queue, pos, single: !!opts.single, only: opts.only ?? null, scope: opts.scope ?? (opts.single ? 'Vokabel' : st.scope), swing: !!opts.swing, playing: true, spell: null });
   wake(true);
   loop(my);
 }
 export function stepPlayer(d: number) {
   if (!st.queue.length) return;
   const np = Math.max(0, Math.min(st.queue.length - 1, st.pos + d));
-  startPlayer(st.queue, np, subject, { single: st.single, scope: st.scope });
+  startPlayer(st.queue, np, subject, { single: st.single, scope: st.scope, swing: st.swing });
 }
 export function togglePlayer() {
   if (st.playing) stopPlayer();
-  else if (st.queue.length) startPlayer(st.queue, st.pos, subject, { single: st.single, only: st.only, scope: st.scope });
+  else if (st.queue.length) startPlayer(st.queue, st.pos, subject, { single: st.single, only: st.only, scope: st.scope, swing: st.swing });
 }
 async function loop(my: number) {
   while (run === my) {
@@ -167,6 +167,14 @@ async function playItem(v: Vocab | undefined, my: number) {
   const s = getSettings();
   emit({ activeId: v.id, spell: null });
   const term = sayText(v.term, subject), tr = sayText(v.translation, 'de');
+  if (st.swing) {
+    // Schaukel-Modus: Wort, Zeit zum Mitsagen, Übersetzung, Pause. Ohne Buchstabieren.
+    await say(term, subject); if (run !== my) return;
+    await wait(2600); if (run !== my) return;
+    await say(tr, 'de'); if (run !== my) return;
+    await wait(1600);
+    return;
+  }
   if (st.only !== 'spell') {
     await say(term, subject); if (run !== my) return;
     await wait(450); if (run !== my) return;

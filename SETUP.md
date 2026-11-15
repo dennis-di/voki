@@ -9,6 +9,14 @@ Einmalig, ca. 20 Minuten. Reihenfolge einhalten.
 
 Das legt Tabellen, Zugriffsregeln und deine erste Einladung an: **START-GAT5FX** (Admin-Konto, einmal gültig).
 
+4. Danach genauso `supabase/migrations/2026-11-15_voki-v2.sql` ausführen (Seiten, männlich/weiblich, Beispielsätze, Merk-Regeln, Lernstufen, XP, Test-Termine, Liga, Eltern-Ansicht). Bestehende Units und Lernstände bleiben erhalten; die Seitenzahl wird aus dem Zusatz („Seite 158“) übernommen.
+
+### Update auf Voki v2 (bestehende Installation)
+1. SQL Editor › `supabase/migrations/2026-11-15_voki-v2.sql` einfügen › **Run**.
+2. Edge Function **read-photo** mit dem neuen Code aus `supabase/functions/read-photo/index.ts` neu deployen („Verify JWT“ weiterhin AUS).
+3. Erst dann die neue App-Version veröffentlichen (Merge auf main → Vercel).
+Reihenfolge ist wichtig: Die alte App läuft mit der neuen Datenbank weiter, die neue App braucht die neue Datenbank zum Speichern.
+
 ## 2. Anmeldung absichern
 **Authentication › Sign In / Providers › Email**
 - **Allow new users to sign up: AUS.** Konten entstehen nur noch über Einladungscodes (die Server-Funktion darf trotzdem anlegen).

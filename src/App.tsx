@@ -14,7 +14,8 @@ import Test from './screens/Test';
 import Settings from './screens/Settings';
 import Admin from './screens/Admin';
 
-export type Route = { n: 'home' } | { n: 'unit'; id: string } | { n: 'edit'; id?: string } | { n: 'test' } | { n: 'settings' } | { n: 'admin' };
+export interface TestPreset { mode: 'auto' | 'rehearsal'; vocabIds?: string[]; unitIds?: string[]; title?: string }
+export type Route = { n: 'home' } | { n: 'unit'; id: string } | { n: 'edit'; id?: string } | { n: 'test'; preset?: TestPreset } | { n: 'settings' } | { n: 'admin' };
 export type Go = (r: Route) => void;
 
 export default function App() {
@@ -50,7 +51,7 @@ export default function App() {
       {route.n === 'home' && <Home profile={profile} go={go} />}
       {route.n === 'unit' && <UnitView id={route.id} go={go} />}
       {route.n === 'edit' && <Editor key={route.id || 'new'} id={route.id} profile={profile} go={go} />}
-      {route.n === 'test' && <Test go={go} onActive={setTestActive} />}
+      {route.n === 'test' && <Test key={route.preset ? JSON.stringify(route.preset) : 'test'} go={go} onActive={setTestActive} preset={route.preset} />}
       {route.n === 'settings' && <Settings profile={profile} onProfile={reloadProfile} go={go} />}
       {route.n === 'admin' && profile.role === 'admin' && <Admin me={profile} go={go} />}
       {showTabs && (

@@ -1,5 +1,5 @@
 // Offline-Zwischenspeicher: Seite immer frisch aus dem Netz (Fallback Cache), Ton, Texterkennung und Bundles aus dem Cache.
-const CACHE = 'vw-v1';
+const CACHE = 'vw-v2';
 self.addEventListener('install', (e) => { self.skipWaiting(); });
 self.addEventListener('activate', (e) => {
   e.waitUntil(caches.keys().then((ks) => Promise.all(ks.filter((k) => k !== CACHE).map((k) => caches.delete(k)))).then(() => self.clients.claim()));

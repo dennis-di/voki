@@ -3,15 +3,15 @@ import type { Go } from '../App';
 import { deleteUnit, hasOwnKey, loadUnit, saveUnit } from '../lib/data';
 import { readWithClaude, readWithTesseract, type OcrRow } from '../lib/ocr';
 import { useSettings } from '../lib/settings';
-import { parseLines } from '../lib/text';
-import { SUBJECTS, type Profile, type Row, type Subject } from '../lib/types';
+import { guessGender, parseLines } from '../lib/text';
+import { SUBJECTS, type Example, type Profile, type Row, type Subject } from '../lib/types';
 import { toast } from '../ui/common';
 import { IBack, ICamera, IPlus, ITrash } from '../ui/icons';
 import { SubjectSwitch } from './Home';
 
 let keySeq = 0;
 const newKey = () => 'n' + ++keySeq;
-const blank = (section = ''): Row => ({ key: newKey(), section, term: '', ipa: '', translation: '' });
+const blank = (page = '', section = '', kind: Row['kind'] = 'word'): Row => ({ key: newKey(), kind, page, section, term: '', ipa: '', translation: '', gender: '', plural: '', note: '', examples: [] });
 
 const CLAUDE_ERR: Record<string, string> = {
   daily_limit: 'Für heute ist das Limit an Foto-Erkennungen erreicht.',
@@ -37,6 +37,8 @@ export default function Editor({ id, profile, go }: { id?: string; profile: Prof
   const [canClaude, setCanClaude] = useState(profile.ai_access === 'owner');
   const [paste, setPaste] = useState<string | null>(null);
   const [confirmDel, setConfirmDel] = useState(false);
+  const [page, setPage] = useState('');
+  const [open, setOpen] = useState<string | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => { if (profile.ai_access !== 'owner') hasOwnKey().then((k) => k && setCanClaude(true)).catch(() => { /* egal */ }); }, [profile.ai_access]);
@@ -44,15 +46,18 @@ export default function Editor({ id, profile, go }: { id?: string; profile: Prof
     if (!id) return;
     loadUnit(id).then(({ unit, vocab }) => {
       setSubject(unit.subject); setTitle(unit.title); setSubtitle(unit.subtitle || '');
-      setRows(vocab.length ? vocab.map((v) => ({ key: v.id, id: v.id, section: v.section || '', term: v.term, ipa: v.ipa || '', translation: v.translation })) : [blank()]);
+      setRows(vocab.length ? vocab.map((v): Row => ({
+        key: v.id, id: v.id, kind: v.kind || 'word', page: v.page || '', section: v.section || '', term: v.term, ipa: v.ipa || '', translation: v.translation,
+        gender: v.gender || '', plural: v.plural || '', note: v.note || '', examples: v.examples || [],
+      })) : [blank()]);
       setLoading(false);
     }).catch(() => { setErr('Die Unit konnte nicht geladen werden.'); setLoading(false); });
   }, [id]);
   useEffect(() => () => { if (photo) URL.revokeObjectURL(photo.url); }, [photo]);
 
-  const filled = rows.filter((r) => r.term.trim() || r.translation.trim());
-  const addRows = (list: OcrRow[]) => {
-    const add = list.map((r) => ({ ...r, key: newKey() }));
+  const filled = rows.filter((r) => r.kind === 'word' && (r.term.trim() || r.translation.trim()));
+  const addRows = (list: OcrRow[], pg = page) => {
+    const add = list.map((r): Row => ({ ...r, page: r.page || pg, key: newKey() }));
     setRows((cur) => {
       const keep = cur.filter((r) => r.id || r.term.trim() || r.translation.trim());
       return [...keep, ...add];
@@ -67,9 +72,11 @@ export default function Editor({ id, profile, go }: { id?: string; profile: Prof
         status('Claude liest die Seite … meist 15 bis 40 Sekunden.');
         const r = await readWithClaude(file, subject);
         if (r.rows?.length) {
-          addRows(r.rows);
+          if (r.page) setPage(r.page);
+          addRows(r.rows, r.page || page);
           if (!title.trim() && r.title) { const [t, ...rest] = r.title.split(' · '); setTitle(t); if (!subtitle && rest.length) setSubtitle(rest.join(' · ')); }
-          setOcr({ kind: 'ok', text: `${r.rows.length} Vokabeln erkannt. Bitte kurz mit dem Foto vergleichen, dann speichern.`, busy: false });
+          const nw = r.rows.filter((x) => x.kind === 'word').length, nr = r.rows.length - nw, ne = r.rows.reduce((n, x) => n + x.examples.length, 0);
+          setOcr({ kind: 'ok', text: `${nw} Vokabeln${ne ? `, ${ne} Beispielsätze` : ''}${nr ? `, ${nr} Merk-Regeln` : ''} erkannt${r.page ? ` (Seite ${r.page})` : ''}. Bitte kurz mit dem Foto vergleichen, dann speichern.`, busy: false });
           return;
         }
         if (r.error && r.error !== 'no_key') {
@@ -96,7 +103,7 @@ export default function Editor({ id, profile, go }: { id?: string; profile: Prof
   async function save() {
     setErr('');
     if (!title.trim()) { setErr('Gib der Unit einen Namen, z. B. „Unité 1“ oder „Unit 3 · Seite 42“.'); return; }
-    const half = rows.find((r) => (r.term.trim() && !r.translation.trim()) || (!r.term.trim() && r.translation.trim()));
+    const half = rows.find((r) => r.kind === 'word' && ((r.term.trim() && !r.translation.trim()) || (!r.term.trim() && r.translation.trim())));
     if (half) { setErr('Bei einer Zeile fehlt das Wort oder die Übersetzung. Ergänze sie oder lösche die Zeile.'); return; }
     setSaving(true);
     try {
@@ -128,8 +135,11 @@ export default function Editor({ id, profile, go }: { id?: string; profile: Prof
         <h2>Vom Foto übernehmen</h2>
         <button className={'btn block ' + subject} disabled={ocr.busy} onClick={() => fileRef.current?.click()}><ICamera />Foto aufnehmen oder auswählen</button>
         <input ref={fileRef} type="file" accept="image/*" hidden onChange={onFile} />
+        <label className="f">Seite im Buch <span className="hint">für die neuen Zeilen; Claude erkennt sie meist selbst</span>
+          <input className="inp" id="upage" inputMode="numeric" value={page} onChange={(e) => setPage(e.target.value.slice(0, 20))} placeholder="z. B. 163" />
+        </label>
         <p className="hint">
-          {canClaude ? 'Claude liest die Seite ab, inklusive Lautschrift und Abschnitten.' : 'Die Seite wird direkt auf dem Gerät gelesen, kostenlos.'} Das Foto wird nicht gespeichert.
+          {canClaude ? 'Claude liest die Seite ab: Lautschrift, Abschnitte, männlich/weiblich, Beispielsätze und die orangen Merk-Kästen.' : 'Die Seite wird direkt auf dem Gerät gelesen, kostenlos (nur Wort und Übersetzung).'} Weitere Seiten derselben Unit einfach nacheinander fotografieren. Das Foto wird nicht gespeichert.
         </p>
         {ocr.text && <div className={'note ' + ocr.kind} role="status">{ocr.text}</div>}
         {photo && <img className="photo" src={photo.url} alt="Foto der Vokabelseite zum Vergleichen" />}
@@ -157,27 +167,73 @@ export default function Editor({ id, profile, go }: { id?: string; profile: Prof
         </div>
         {paste !== null && (
           <div className="stack" style={{ padding: '6px 16px 12px' }}>
-            <p className="hint">Eine Vokabel pro Zeile: <b>{subject === 'fr' ? 'bonjour' : 'hello'} = {subject === 'fr' ? 'guten Tag' : 'hallo'}</b>. Eine Zeile mit # beginnt einen Abschnitt.</p>
+            <p className="hint">Eine Vokabel pro Zeile: <b>{subject === 'fr' ? 'la danse' : 'hello'} = {subject === 'fr' ? 'der Tanz' : 'hallo'}</b>. Zeilen mit <b>@ 163</b> setzen die Seite, <b># A1</b> den Abschnitt, <b>! Text</b> ist eine Merk-Regel, <b>&gt; Satz = Übersetzung</b> ein Beispiel zur Vokabel davor.</p>
             <textarea className="inp" id="paste" value={paste} onChange={(e) => setPaste(e.target.value)} spellCheck={false} />
-            <button className="btn" onClick={() => { const r = parseLines(paste); if (!r.length) { toast('Keine Zeile mit „=“ gefunden'); return; } addRows(r); setPaste(null); toast(`${r.length} Vokabeln übernommen`); }}>Übernehmen</button>
+            <button className="btn" onClick={() => { const r = parseLines(paste, subject).map((x) => ({ ...x, page: x.page || page })); if (!r.length) { toast('Keine Zeile mit „=“ gefunden'); return; } addRows(r); setPaste(null); toast(`${r.length} Zeilen übernommen`); }}>Übernehmen</button>
           </div>
         )}
         <div className="erow" style={{ paddingBlock: 6, borderTop: 0 }}>
           <span className="eyebrow">{L.name}</span><span className="eyebrow">Deutsch</span><span style={{ width: 42 }} />
         </div>
-        {rows.map((r) => (
-          <div key={r.key} className="erow">
-            <input className="inp" aria-label={`${L.name}es Wort`} lang={subject} value={r.term} onChange={(e) => update(r.key, { term: e.target.value })} autoCapitalize="off" spellCheck={false} />
-            <input className="inp" aria-label="Deutsche Übersetzung" lang="de" value={r.translation} onChange={(e) => update(r.key, { translation: e.target.value })} />
-            <button className="ib" aria-label="Zeile löschen" onClick={() => remove(r)}><ITrash /></button>
-            <div className="sub">
-              <input className="inp" aria-label="Abschnitt" placeholder="Abschnitt" value={r.section} onChange={(e) => update(r.key, { section: e.target.value })} />
-              <input className="inp" aria-label="Lautschrift" placeholder="Lautschrift (freiwillig)" value={r.ipa} onChange={(e) => update(r.key, { ipa: e.target.value })} style={{ fontFamily: 'var(--f-ipa)' }} />
+        {rows.map((r, idx) => {
+          const prev = rows[idx - 1];
+          const head = idx === 0 || prev.page !== r.page || prev.section !== r.section;
+          const headLine = head && (r.page || r.section) ? <div className="ehead">{[r.page && `Seite ${r.page}`, r.section && `Abschnitt ${r.section}`].filter(Boolean).join(' · ')}</div> : null;
+          if (r.kind === 'rule') return (
+            <div key={r.key}>
+              {headLine}
+              <div className="erow rule">
+                <textarea className="inp" aria-label="Merk-Regel" value={r.term} onChange={(e) => update(r.key, { term: e.target.value })} rows={2} placeholder="Merk-Regel, z. B. Un jeu / des jeux: im Plural ein -x" />
+                <button className="ib" aria-label="Regel löschen" onClick={() => remove(r)}><ITrash /></button>
+                <div className="sub"><input className="inp" aria-label="Seite" placeholder="Seite" value={r.page} onChange={(e) => update(r.key, { page: e.target.value })} /><input className="inp" aria-label="Abschnitt" placeholder="Abschnitt" value={r.section} onChange={(e) => update(r.key, { section: e.target.value })} /></div>
+              </div>
             </div>
-          </div>
-        ))}
-        <div style={{ padding: 12 }}>
-          <button className="btn block" onClick={() => setRows((cur) => [...cur, blank(cur[cur.length - 1]?.section || '')])}><IPlus />Zeile hinzufügen</button>
+          );
+          const more = open === r.key;
+          const setEx = (examples: Example[]) => update(r.key, { examples });
+          return (
+            <div key={r.key}>
+              {headLine}
+              <div className={'erow' + (r.gender ? ' g-' + r.gender : '')}>
+                <input className="inp" aria-label={`${L.name}es Wort`} lang={subject} value={r.term}
+                  onChange={(e) => update(r.key, { term: e.target.value, ...(r.gender ? {} : { gender: guessGender(e.target.value, subject) }) })} autoCapitalize="off" spellCheck={false} />
+                <input className="inp" aria-label="Deutsche Übersetzung" lang="de" value={r.translation} onChange={(e) => update(r.key, { translation: e.target.value })} />
+                <button className="ib" aria-label="Zeile löschen" onClick={() => remove(r)}><ITrash /></button>
+                <div className="sub sub3">
+                  <input className="inp" aria-label="Seite" placeholder="Seite" value={r.page} onChange={(e) => update(r.key, { page: e.target.value })} />
+                  <input className="inp" aria-label="Abschnitt" placeholder="Abschnitt" value={r.section} onChange={(e) => update(r.key, { section: e.target.value })} />
+                  <input className="inp" aria-label="Lautschrift" placeholder="Lautschrift" value={r.ipa} onChange={(e) => update(r.key, { ipa: e.target.value })} style={{ fontFamily: 'var(--f-ipa)' }} />
+                </div>
+                <div className="sub row wrap" style={{ gap: 6 }}>
+                  <div className="gsel" role="group" aria-label="Geschlecht">
+                    <button type="button" aria-pressed={r.gender === 'm'} className="gm" onClick={() => update(r.key, { gender: r.gender === 'm' ? '' : 'm' })}>m</button>
+                    <button type="button" aria-pressed={r.gender === 'f'} className="gf" onClick={() => update(r.key, { gender: r.gender === 'f' ? '' : 'f' })}>f</button>
+                  </div>
+                  <button type="button" className="btn sm" aria-expanded={more} onClick={() => setOpen(more ? null : r.key)}>
+                    {more ? 'Weniger' : `Mehr${r.examples.length ? ` · ${r.examples.length} Beispiel${r.examples.length > 1 ? 'e' : ''}` : ''}${r.note || r.plural ? ' · Hinweis' : ''}`}
+                  </button>
+                </div>
+                {more && (
+                  <div className="sub stack" style={{ gap: 8 }}>
+                    <input className="inp" aria-label="Mehrzahl, wenn unregelmässig" placeholder="Mehrzahl, wenn unregelmässig (z. B. des jeux vidéo)" value={r.plural} onChange={(e) => update(r.key, { plural: e.target.value })} lang={subject} />
+                    <input className="inp" aria-label="Hinweis" placeholder="Hinweis (z. B. englisch: dance)" value={r.note} onChange={(e) => update(r.key, { note: e.target.value })} />
+                    {r.examples.map((ex, k) => (
+                      <div key={k} className="exrow">
+                        <input className="inp" aria-label="Beispielsatz" placeholder="Beispielsatz" lang={subject} value={ex.fr} onChange={(e) => setEx(r.examples.map((x, n) => (n === k ? { ...x, fr: e.target.value } : x)))} />
+                        <input className="inp" aria-label="Übersetzung des Beispiels" placeholder="Übersetzung" lang="de" value={ex.de} onChange={(e) => setEx(r.examples.map((x, n) => (n === k ? { ...x, de: e.target.value } : x)))} />
+                        <button type="button" className="ib" aria-label="Beispiel löschen" onClick={() => setEx(r.examples.filter((_, n) => n !== k))}><ITrash /></button>
+                      </div>
+                    ))}
+                    <button type="button" className="btn sm" onClick={() => setEx([...r.examples, { fr: '', de: '' }])}><IPlus />Beispielsatz</button>
+                  </div>
+                )}
+              </div>
+            </div>
+          );
+        })}
+        <div className="row" style={{ padding: 12 }}>
+          <button className="btn grow" onClick={() => setRows((cur) => [...cur, blank(cur[cur.length - 1]?.page || page, cur[cur.length - 1]?.section || '')])}><IPlus />Vokabel</button>
+          <button className="btn grow rulebtn" onClick={() => setRows((cur) => [...cur, blank(cur[cur.length - 1]?.page || page, cur[cur.length - 1]?.section || '', 'rule')])}><IPlus />Merk-Regel</button>
         </div>
       </section>
 
